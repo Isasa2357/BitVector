@@ -124,9 +124,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="BitVector.h" />
+    <ClInclude Include="test\test_usil.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="BitVector.cpp" />
+    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
