@@ -286,15 +286,15 @@ public:
 
 template<typename Unit>
 BitVector<Unit> operator&(BitVector<Unit> lbv, const BitVector<Unit>& rbv) {
-
+	return lbv &= rbv;
 }
 
 template<typename Unit>
-BitVector<Unit>& operator|(BitVector<Unit> lbv, const BitVector<Unit>& rbv) {
-
+BitVector<Unit> operator|(BitVector<Unit> lbv, const BitVector<Unit>& rbv) {
+	return lbv |= rbv;
 }
 
 template<typename unit>
-BitVector<unit>& operator^(BitVector<unit> lbv, const BitVector<unit>& rbv) {
-
+BitVector<unit> operator^(BitVector<unit> lbv, const BitVector<unit>& rbv) {
+	return lbv ^= rbv;
 }
