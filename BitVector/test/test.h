@@ -1,8 +1,11 @@
 #include <iostream>
+#include <random>
 
 #include "test_usil.h"
 
 #include "../BitVector.h"
+
+using namespace std;
 
 int popcount(uint64_t x) {
 	int c = 0;
@@ -120,26 +123,80 @@ void test_bv_constructor_str() {
 
 /*--------------------------- Unit util ƒeƒXƒg ---------------------------*/
 
+using namespace Unit_util;
+
+void test_uu_single_bit() {
+	for (int i = 0; i < 16; ++i) {
+		assert(get_single_bit<uint16_t>(i) == (1 << i));
+	}
+}
+
+void test_uu_make_seqmask() {
+	const int size = 16;
+	for (size_t i = 0; i < size; ++i) {
+		for (size_t j = i; j < size; ++j) {
+			// ³‰ğì¬
+			string str(size, '0');
+
+			for (int k = 0; k < size; ++k) {
+				if (i <= k && k < j) str[size - k - 1] = '1';
+			}
+
+			// ”äŠr
+			assert(make_seqmask<uint16_t>(i, j) == make_Unit<uint16_t>(str));
+		}
+	}
+}
+
+void test_uu_bitfield() {
+	const int size = 8;
+	for (uint8_t i = 0; i < numeric_limits<uint8_t>::max(); ++i) {
+
+		for (auto j = 0; j <= size; ++j) {
+			for (auto k = j; k <= size; ++k) {
+				string str = bitset<size>(i).to_string();
+				// ³‰ğì¬
+				for (int l = 0; l < size; ++l) {
+					if (!(j <= l && l < k)) str[size - l - 1] = '0';
+				}
+
+				// ”äŠr
+				assert(bitfield<uint8_t>(i, j, k) == make_Unit<uint8_t>(str));
+			}
+		}
+	}
+}
+
+void test_uu_push_left() {
+	const int size = 8;
+	for (uint8_t i = 0; i < numeric_limits<uint8_t>::max(); ++i) {
+		// ‘€ì1
+		string str_i = bitset<size>(i).to_string();
+		auto [pushed, overwhelm] = push_left(i, "010");
+		
+		uint8_t pushed_ans = ((i << 3) | make_Unit<uint8_t>("010"));
+		uint8_t overwhelm_ans = make_Unit<uint8_t>(str_i.substr(0, 3));
+		assert(pushed == pushed_ans);
+		assert(overwhelm == overwhelm_ans);
+
+		// ‘€ì2
+		str_i = bitset<size>(i).to_string();
+		auto [pushed2, overwhelm2] = push_left(i, "00000000");
+
+		assert(pushed2 == make_Unit<uint8_t>("0"));
+		assert(overwhelm2 == make_Unit<uint8_t>(str_i));
+	}
+}
+
+void test_uu() {
+	test_uu_single_bit();
+	test_uu_make_seqmask();
+	test_uu_bitfield();
+	test_uu_push_left();
+}
+
 void test_uu_make_Unit() {
 	std::string str = "01101";
 	std::cout << Unit_util::make_Unit<int64_t>(str) << std::endl;
 	std::cout << std::bitset<64>(str).to_ulong() << std::endl;
-}
-
-void test_uu_push_left() {
-	uint16_t x = std::numeric_limits<uint16_t>::max();
-
-	auto [pushed_x, overwhelm] = Unit_util::push_left(x, "101");
-
-	Unit_util::show_bin_uint16(pushed_x);
-	Unit_util::show_bin_uint16(overwhelm);
-}
-
-void test_uu_make_seqmask() {
-	for (size_t i = 0; i < 8; ++i) {
-		for (size_t j = i; j < 8; ++j) {
-			std::cout << i << ", " << j << std::endl;
-			Unit_util::show_bin(Unit_util::make_seqmask<uint8_t>(i, j));
-		}
-	}
 }
