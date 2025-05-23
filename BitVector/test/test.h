@@ -102,3 +102,44 @@ void test_bv_to_string() {
 
 	std::cout << "Done" << std::endl;
 }
+
+/*------------------------------ BitVector ------------------------------*/
+
+void test_bv_constructor_str() {
+	std::string str = "101010101111111111110000";
+	BitVector<uint8_t> bv(str);
+	std::bitset<24> bs(str);
+
+	for (int i = 0; i < bv.bitvec().size(); ++i) {
+		std::cout << unsigned long(bv.bitvec()[i]) << std::endl;
+	}
+	bv.show("");
+	std::cout << bv.to_string() << std::endl;
+	std::cout << bs << std::endl;
+}
+
+/*--------------------------- Unit util ƒeƒXƒg ---------------------------*/
+
+void test_uu_make_Unit() {
+	std::string str = "01101";
+	std::cout << Unit_util::make_Unit<int64_t>(str) << std::endl;
+	std::cout << std::bitset<64>(str).to_ulong() << std::endl;
+}
+
+void test_uu_push_left() {
+	uint16_t x = std::numeric_limits<uint16_t>::max();
+
+	auto [pushed_x, overwhelm] = Unit_util::push_left(x, "101");
+
+	Unit_util::show_bin_uint16(pushed_x);
+	Unit_util::show_bin_uint16(overwhelm);
+}
+
+void test_uu_make_seqmask() {
+	for (size_t i = 0; i < 8; ++i) {
+		for (size_t j = i; j < 8; ++j) {
+			std::cout << i << ", " << j << std::endl;
+			Unit_util::show_bin(Unit_util::make_seqmask<uint8_t>(i, j));
+		}
+	}
+}

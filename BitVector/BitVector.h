@@ -6,8 +6,47 @@
 #include <tuple>
 #include <utility>
 #include <bitset>
+#include <typeinfo>
 
-namespace bit_util {
+/*------------------------------- unit util ------------------------------*/
+
+namespace Unit_util {
+
+	/*--------------------- 表示系 --------------------*/
+
+	void show_bin_uint8(uint8_t x) {
+		std::cout << std::bitset<8>(x);
+	}
+
+	void show_bin_uint16(uint16_t x) {
+		std::cout << std::bitset<16>(x);
+	}
+
+	void show_bin_uint32(uint32_t x) {
+		std::cout << std::bitset<32>(x);
+	}
+
+	void show_bin_uint64(uint64_t x) {
+		std::cout << std::bitset<64>(x);
+	}
+
+	template <typename Unit>
+	void show_bin(Unit x, std::string end = "\n") {
+		size_t unit_size = sizeof(Unit) * CHAR_BIT;
+		if (unit_size == 8) {
+			show_bin_uint8(x);
+		} else if (unit_size == 16) {
+			show_bin_uint16(x);
+		} else if (unit_size == 32) {
+			show_bin_uint32(x);
+		} else if (unit_size == 64) {
+			show_bin_uint64(x);
+		}
+		std::cout << end;
+	}
+
+	/*-------------------- カウント系 --------------------*/
+
 	int popcount(uint64_t x) {
 		int c = 0;
 		while (x) {
@@ -17,29 +56,21 @@ namespace bit_util {
 		return c;
 	}
 
-	template <typename T>
-	T bitfield(T x, int begin, int end) {
-		// マスク作成
-		size_t size = sizeof(T) * CHAR_BIT;
-		T mask = std::numeric_limits<T>::max();
-		mask <<= size - end;
-		mask >>= ((size - end - 1) + begin + 1);
-		mask <<= begin;
+	/*-------------------- 生成系 --------------------*/
 
-		// 抽出
-		return x & mask;
+	template <typename Unit>
+	Unit get_single_bit(const size_t pos) {
+		// posの位置のみ1の Unit を生成
+
+		return Unit(1) << pos;
 	}
 
-	template <typename T>
-	T get_single_bit(const size_t pos) {
-		return T(1) << pos;
-	}
+	template <typename Unit>
+	Unit make_seqmask(const size_t begin, const size_t end) {
+		// [begin, end) が1でそれ以外が0のビット列を生成
 
-	template <typename T>
-	T get_fill_bit(const size_t begin, const size_t end) {
-		// マスク作成
-		size_t size = sizeof(T) * CHAR_BIT;
-		T mask = std::numeric_limits<T>::max();
+		size_t size = sizeof(Unit) * CHAR_BIT;
+		Unit mask = std::numeric_limits<Unit>::max();
 		mask <<= size - end;
 		mask >>= ((size - end - 1) + begin + 1);
 		mask <<= begin;
@@ -47,9 +78,55 @@ namespace bit_util {
 		return mask;
 	}
 
-	void show_bin_int64(int64_t x) {
-		std::cout << std::bitset<64>(x) << std::endl;
+	template <typename Unit>
+	Unit make_Unit(std::string x) {
+		// ビットの文字列表現を Unitに変換
+
+		Unit ret = Unit(0);
+
+		for (auto& bit : x) {
+			ret <<= 1;
+			if (bit == '1') ret += 1;
+		}
+
+		return ret;
 	}
+
+
+	/*-------------------- 操作系 --------------------*/
+
+	template <typename Unit>
+	Unit bitfield(Unit x, int begin, int end) {
+		// x の beginからendのびっとを抽出し，範囲外を 0 埋めしたものを生成
+
+		// マスク作成
+		Unit mask = make_seqmask<Unit>(begin, end);
+
+		// 抽出
+		return x & mask;
+	}
+
+	template <typename Unit>
+	std::pair<Unit, Unit> push_left(Unit unit, std::string push_val = '0') {
+		// unit に push_val をleft push shiftしたものと，溢れたものを返す
+
+		// aft_push: push操作後のunit
+		// overwhelm: 溢れた値
+		Unit aft_push(unit);
+		Unit overwhelm(unit);
+
+		// aft_push計算
+		aft_push <<= push_val.size();
+		aft_push |= make_Unit<Unit>(push_val);
+
+		// overwhelm計算
+		size_t unit_size = sizeof(Unit) * CHAR_BIT;
+		overwhelm >>= (unit_size - push_val.size());
+
+		return std::make_pair(aft_push, overwhelm);
+	}
+
+	
 }
 
 template <typename Unit=uint64_t>
@@ -78,7 +155,15 @@ public:
 	BitVector(const std::string str_bit) 
 		: BitVector(str_bit.size())
 	{
-		// 配列にpush
+		// 左端以外のUnitの代入
+		auto i = 0;
+		for (i = 0; i < this->bitvec_.size() - 1; ++i) {
+			this->bitvec_[i] = Unit_util::make_Unit<Unit>(str_bit.substr(str_bit.size() - (unit_size_ * (i + 1)), unit_size_));
+		}
+
+		// 左端のUnitの代入
+		std::cout << str_bit.substr(0, str_bit.size() - (unit_size_ * i) + 1) << std::endl;
+		this->bitvec_[i] = Unit_util::make_Unit<Unit>(str_bit.substr(0, str_bit.size() - (unit_size_ * i)));
 	}
 
 	/*------------------------------- index変換 ------------------------------*/
@@ -169,12 +254,89 @@ public:
 		return !(*this == obv);
 	}
 
-	BitVector<Unit>& operator<<(const size_t pos) const {
+
+	/*--------------- シフト ---------------*/
+	// シフトには以下の3種類がある
+	// shift: 通常シフト．ビット列の長さを維持しつつ，溢れた分は0で埋める
+	// cycle_shift: 循環シフト．ビット列の長さを維持しつつ，循環シフト．
+	// push_shift: 左シフトでは，シフトした分ビット列の長さが増える．増えた分は設定した値で埋める．
+	//             e.g. bv(101).push_shift_left(010) -> bv(101010)
+	//                  bv(101).push_shift_right(01) -> bv(011)
+	// シフト演算子は通常シフトに対応させる．
+
+	/*---------- 通常シフト ----------*/
+
+	BitVector<Unit> shl(const size_t sh_pos) const {
+		// sh_pos回 左シフト
+
+		return shl(std::string(sh_pos, '0'));
+	}
+
+	BitVector<Unit> shl(std::string push_val=0) const {
+		// 左シフト後，空いた部分を push_val で埋める
+		BitVector<Unit> sh_bv(*this);
+
+		// unit_shift_count: Unitレベルのシフト回数
+		// bit_shift_count: ビットレベルのシフト回数
+		const int shift_count = push_val.size();
+		const int unit_shift_count = shift_count / unit_size_;
+		const int bit_shift_count = shift_count % unit_size_;
+
+		//----- Unitレベルのシフト
+		for (auto i = this->bitvec_.size() - unit_shift_count - 1; i >= 0; --i) {
+			this->bitvec_[i + unit_shift_count] = this->bitvec_[i];
+		}
+
+		//----- bit レベルのシフト
+		// 左端の演算
+		auto [pushed, overwhelm] = Unit_util::push_left(this->bitvec_.back());
+		this->bitvec_.back() = pushed;
+
+		// 左端以外の演算
+		for (auto i = this->bitvec_.size() - 2; i >= unit_shift_count; --i) {
+			auto [pushed, overwhelm] = Unit_util::push_left(this->bitvec_[i]);
+			this->bitvec_[i] = pushed;
+			this->bitvec_[i] |= overwhelm;
+		}
+
+		// push_val で埋める
+
+
+	}
+
+	BitVector<Unit> shr(const size_t sh_pos) const {
+		return shr(std::string(sh_pos, '0'));
+
+	}
+
+	BitVector<Unit> shr(std::string push_val = "0") const {
+		return NULL;
+	}
+
+	BitVector<Unit> operator<<(const size_t pos) const {
 		// 未実装 <<=実装以降
 	}
 
-	BitVector<Unit>& operator>>(const size_t pos) const {
+	BitVector<Unit> operator>>(const size_t pos) const {
 		// 未実装 >>= 実装以降
+	}
+
+	/*---------- 循環シフト ----------*/
+	BitVector<Unit> cshl(const size_t sh_pos) const {
+
+	}
+
+	BitVector<Unit> cshr(const size_t sh_pos) const {
+
+	}
+
+	/*---------- 押し出しシフト ----------*/
+	BitVector<Unit> pshl(const size_t sh_pos) const {
+
+	}
+
+	BitVector<Unit> pshr(const size_t sh_pos) const {
+
 	}
 
 	/*------------------------------ 操作 ------------------------------*/
@@ -203,20 +365,20 @@ public:
 		int count = 0;
 		// 左端以外をカウント
 		for (auto unit = this->bitvec_.begin(); unit < this->bitvec_.end() - 1; ++unit) {
-			count += bit_util::popcount(*unit);
+			count += Unit_util::popcount(*unit);
 		}
 
 		// 左端をカウント
 		int bitidx = get_bitidx_from_seqidx(size_ - 1);
-		Unit left_unit = bit_util::bitfield(this->bitvec_.back(), 0, bitidx + 1);
-		count += bit_util::popcount(left_unit);
+		Unit left_unit = Unit_util::bitfield(this->bitvec_.back(), 0, bitidx + 1);
+		count += Unit_util::popcount(left_unit);
 		return count;
 	}
 
 	bool test(const size_t pos) const {
 		auto [byteidx, bitidx] = conv_seqidx2bytebitidx(pos);
 
-		Unit mask = bit_util::get_single_bit<uint64_t>(bitidx);
+		Unit mask = Unit_util::get_single_bit<uint64_t>(bitidx);
 		return this->bitvec_[byteidx] & mask;
 	}
 
@@ -229,8 +391,8 @@ public:
 
 		// 左端を検証
 		int bitidx = get_bitidx_from_seqidx(size_ - 1);
-		Unit left_unit = bit_util::bitfield(this->bitvec_.back(), 0, bitidx + 1);
-		fill = bit_util::get_fill_bit<Unit>(0, bitidx + 1);
+		Unit left_unit = Unit_util::bitfield(this->bitvec_.back(), 0, bitidx + 1);
+		fill = Unit_util::make_seqmask<Unit>(0, bitidx + 1);
 
 		return left_unit == fill;
 	}
@@ -249,9 +411,9 @@ public:
 
 		// 左端を処理
 		int bitidx = get_bitidx_from_seqidx(size_ - 1);
-		Unit left_unit = bit_util::bitfield(this->bitvec_.back(), 0, bitidx + 1);
+		Unit left_unit = Unit_util::bitfield(this->bitvec_.back(), 0, bitidx + 1);
 		for (auto i = bitidx; i >= 0; --i) {
-			if (left_unit & bit_util::get_single_bit<Unit>(i)) str += "1";
+			if (left_unit & Unit_util::get_single_bit<Unit>(i)) str += "1";
 			else str += "0";
 		}
 
@@ -279,8 +441,19 @@ protected:
 public:
 	std::vector<Unit> bitvec() const { return this->bitvec_; }
 
-	void show() const {
-		for (auto unit = this->bitvec_.begin(); unit < this->bitvec_.end(); ++unit) bit_util::show_bin_int64(*unit);
+	void show(std::string end="\n") const {
+		for (auto unit = this->bitvec_.rbegin(); unit != this->bitvec_.rend(); ++unit) {
+			Unit_util::show_bin(*unit, end);
+			std::cout << end;
+		}
+		std::cout << std::endl;
+	}
+
+	void show_val() const {
+		for (auto unit = this->bitvec_.rbegin(); unit != this->bitvec_.rend(); ++unit) {
+			std::cout << *unit << ",";
+		}
+		std::cout << std::endl;
 	}
 };
 
